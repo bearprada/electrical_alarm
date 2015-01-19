@@ -1,33 +1,24 @@
-/*
- * Copyright (C) 2009 The Android Open Source Project
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package electricwakeup.baka.com;
 
+
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.util.UUID;
 
+import android.app.Service;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothServerSocket;
 import android.bluetooth.BluetoothSocket;
-import android.content.Context;
+import android.content.ContentResolver;
+import android.content.Intent;
+import android.os.Binder;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.IBinder;
 import android.os.Message;
 import android.util.Log;
 
@@ -37,21 +28,20 @@ import android.util.Log;
  * incoming connections, a thread for connecting with a device, and a
  * thread for performing data transmissions when connected.
  */
-public class ElectricWakeService {
+public class BluetoothChatService extends Service {
     // Debugging
-    private static final String TAG = "BluetoothIOControlService";
+    private static final String TAG = "BluetoothChatService";
     private static final boolean D = true;
 
     // Name for the SDP record when creating server socket
-    private static final String NAME = "BluetoothIOControl";
+    private static final String NAME = "BluetoothChat";
 
     // Unique UUID for this application
-    //private static final UUID MY_UUID = UUID.fromString("fa87c0d0-afac-11de-8a39-0800200c9a66");
     private static final UUID MY_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
 
     // Member fields
-    private final BluetoothAdapter mAdapter;
-    private final Handler mHandler;
+    private BluetoothAdapter mAdapter;
+    private Handler mHandler;
     private AcceptThread mAcceptThread;
     private ConnectThread mConnectThread;
     private ConnectedThread mConnectedThread;
@@ -63,15 +53,24 @@ public class ElectricWakeService {
     public static final int STATE_CONNECTING = 2; // now initiating an outgoing connection
     public static final int STATE_CONNECTED = 3;  // now connected to a remote device
 
-    /**
-     * Constructor. Prepares a new BluetoothChat session.
-     * @param context  The UI Activity Context
-     * @param handler  A Handler to send messages back to the UI Activity
-     */
-    public ElectricWakeService(Context context, Handler handler) {
+	private static final int MESSAGE_STATE_CHANGE 	= 100;
+	private static final int MESSAGE_DEVICE_NAME 	= 101;
+	private static final String DEVICE_NAME = "device_name";
+	private static final String DEVICE_STATE = "device_state";
+	public static final int STATE_CONNECT_FAILED = 2;
+	public static final int STATE_LOST = 3;
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
         mAdapter = BluetoothAdapter.getDefaultAdapter();
         mState = STATE_NONE;
-        mHandler = handler;
+        mHandler = new Handler();
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
     }
 
     /**
@@ -83,7 +82,7 @@ public class ElectricWakeService {
         mState = state;
 
         // Give the new state to the Handler so the UI Activity can update
-        mHandler.obtainMessage(ElectricWake.MESSAGE_STATE_CHANGE, state, -1).sendToTarget();
+        mHandler.obtainMessage(MESSAGE_STATE_CHANGE, state, -1).sendToTarget();
     }
 
     /**
@@ -112,6 +111,9 @@ public class ElectricWakeService {
         setState(STATE_LISTEN);
     }
 
+    public synchronized void connect(String address) {
+        connect(mAdapter.getRemoteDevice(address));
+    }
     /**
      * Start the ConnectThread to initiate a connection to a remote device.
      * @param device  The BluetoothDevice to connect
@@ -151,13 +153,13 @@ public class ElectricWakeService {
         if (mAcceptThread != null) {mAcceptThread.cancel(); mAcceptThread = null;}
 
         // Start the thread to manage the connection and perform transmissions
-        mConnectedThread = new ConnectedThread(socket);
+        mConnectedThread = new ConnectedThread(socket, getContentResolver());
         mConnectedThread.start();
 
         // Send the name of the connected device back to the UI Activity
-        Message msg = mHandler.obtainMessage(ElectricWake.MESSAGE_DEVICE_NAME);
+        Message msg = mHandler.obtainMessage(MESSAGE_DEVICE_NAME);
         Bundle bundle = new Bundle();
-        bundle.putString(ElectricWake.DEVICE_NAME, device.getName());
+        bundle.putString(DEVICE_NAME, device.getName());
         msg.setData(bundle);
         mHandler.sendMessage(msg);
 
@@ -199,9 +201,9 @@ public class ElectricWakeService {
         setState(STATE_LISTEN);
 
         // Send a failure message back to the Activity
-        Message msg = mHandler.obtainMessage(ElectricWake.MESSAGE_TOAST);
+        Message msg = mHandler.obtainMessage(MESSAGE_STATE_CHANGE);
         Bundle bundle = new Bundle();
-        bundle.putString(ElectricWake.TOAST, "Unable to connect device");
+        bundle.putInt(DEVICE_STATE, STATE_CONNECT_FAILED);
         msg.setData(bundle);
         mHandler.sendMessage(msg);
     }
@@ -213,9 +215,9 @@ public class ElectricWakeService {
         setState(STATE_LISTEN);
 
         // Send a failure message back to the Activity
-        Message msg = mHandler.obtainMessage(ElectricWake.MESSAGE_TOAST);
+        Message msg = mHandler.obtainMessage(MESSAGE_STATE_CHANGE);
         Bundle bundle = new Bundle();
-        bundle.putString(ElectricWake.TOAST, "Device connection was lost");
+        bundle.putInt(DEVICE_STATE, STATE_LOST);
         msg.setData(bundle);
         mHandler.sendMessage(msg);
     }
@@ -259,7 +261,7 @@ public class ElectricWakeService {
 
                 // If a connection was accepted
                 if (socket != null) {
-                    synchronized (ElectricWakeService.this) {
+                    synchronized (BluetoothChatService.this) {
                         switch (mState) {
                         case STATE_LISTEN:
                         case STATE_CONNECTING:
@@ -337,12 +339,12 @@ public class ElectricWakeService {
                     Log.e(TAG, "unable to close() socket during connection failure", e2);
                 }
                 // Start the service over to restart listening mode
-                ElectricWakeService.this.start();
+                BluetoothChatService.this.start();
                 return;
             }
 
             // Reset the ConnectThread because we're done
-            synchronized (ElectricWakeService.this) {
+            synchronized (BluetoothChatService.this) {
                 mConnectThread = null;
             }
 
@@ -365,45 +367,40 @@ public class ElectricWakeService {
      */
     private class ConnectedThread extends Thread {
         private final BluetoothSocket mmSocket;
-        private final InputStream mmInStream;
-        private final OutputStream mmOutStream;
+        private InputStream mmInStream = null;
+        private OutputStream mmOutStream = null;
+        private final ContentResolver mmResovler;
 
-        public ConnectedThread(BluetoothSocket socket) {
+        public ConnectedThread(BluetoothSocket socket, ContentResolver resolver) {
             Log.d(TAG, "create ConnectedThread");
             mmSocket = socket;
-            InputStream tmpIn = null;
-            OutputStream tmpOut = null;
+            mmResovler = resolver;
 
             // Get the BluetoothSocket input and output streams
             try {
-                tmpIn = socket.getInputStream();
-                tmpOut = socket.getOutputStream();
+                mmInStream = socket.getInputStream();
+                mmOutStream = socket.getOutputStream();
             } catch (IOException e) {
                 Log.e(TAG, "temp sockets not created", e);
             }
-
-            mmInStream = tmpIn;
-            mmOutStream = tmpOut;
         }
 
         public void run() {
             Log.i(TAG, "BEGIN mConnectedThread");
-            byte[] buffer = new byte[1024];
-            int bytes;
-
+            BufferedReader reader = new BufferedReader(new InputStreamReader(mmInStream));
             // Keep listening to the InputStream while connected
             while (true) {
                 try {
-                    // Read from the InputStream
-                    bytes = mmInStream.read(buffer);
-
-                    // Send the obtained bytes to the UI Activity
-                    mHandler.obtainMessage(ElectricWake.MESSAGE_READ, bytes, -1, buffer)
-                            .sendToTarget();
+                    String data = reader.readLine();
+                    if (data != null) {
+                        // TODO read data
+                    }
                 } catch (IOException e) {
                     Log.e(TAG, "disconnected", e);
                     connectionLost();
                     break;
+                } catch (NumberFormatException e) {
+                    Log.e(TAG, "the wrong format", e);
                 }
             }
         }
@@ -415,10 +412,6 @@ public class ElectricWakeService {
         public void write(byte[] buffer) {
             try {
                 mmOutStream.write(buffer);
-
-                // Share the sent message back to the UI Activity
-                mHandler.obtainMessage(ElectricWake.MESSAGE_WRITE, -1, -1, buffer)
-                        .sendToTarget();
             } catch (IOException e) {
                 Log.e(TAG, "Exception during write", e);
             }
@@ -430,6 +423,19 @@ public class ElectricWakeService {
             } catch (IOException e) {
                 Log.e(TAG, "close() of connect socket failed", e);
             }
+        }
+    }
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        return mBinder;
+    }
+
+    private final IBinder mBinder = new LocalBinder();
+
+    public class LocalBinder extends Binder {
+        public BluetoothChatService getService() {
+            return BluetoothChatService.this;
         }
     }
 }

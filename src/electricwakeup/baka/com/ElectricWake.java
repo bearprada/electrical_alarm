@@ -3,6 +3,7 @@ package electricwakeup.baka.com;
 import java.util.Calendar;
 import java.util.Set;
 
+import electricwakeup.baka.com.BluetoothChatService.LocalBinder;
 import lhu.f713.stevenpon.com.R;
 import android.app.Activity;
 import android.app.AlarmManager;
@@ -12,17 +13,18 @@ import android.app.TimePickerDialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.ServiceConnection;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Message;
+import android.os.IBinder;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
-import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.Window;
@@ -50,7 +52,6 @@ public class ElectricWake extends Activity {
 
 	// Intent request codes
 	private static final int REQUEST_CONNECT_DEVICE = 1;
-	private static final int REQUEST_ENABLE_BT = 2;
 
 	// Layout Views
 	private TextView mTitle;
@@ -73,12 +74,7 @@ public class ElectricWake extends Activity {
 	// private ArrayAdapter<String> mConversationArrayAdapter;
 	// String buffer for outgoing messages
 	// private StringBuffer mOutStringBuffer;
-	// Local Bluetooth adapter
-	private BluetoothAdapter mBluetoothAdapter = null;
-	// Member object for the chat services
-	private ElectricWakeService mChatService = null;
 
-	/* «Å§iª«¥óÅÜ¼Æ */
 	TextView setTime1;
 	TextView setTime2;
 	Button mButton1;
@@ -87,14 +83,10 @@ public class ElectricWake extends Activity {
 	Button mButton4;
 	Calendar c = Calendar.getInstance();
 
-	final static String MY_ACTION = "testActivity.MY_ACTION";
-	MyReceiver myReceiver;
-
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
-		if (D)
-			Log.e(TAG, "+++ ON CREATE +++");
+		if (D) Log.e(TAG, "+++ ON CREATE +++");
 
 		// Set up the window layout
 		requestWindowFeature(Window.FEATURE_CUSTOM_TITLE);
@@ -107,179 +99,165 @@ public class ElectricWake extends Activity {
 		mTitle.setText(R.string.app_name);
 		mTitle = (TextView) findViewById(R.id.title_right_text);
 
-		// Get local Bluetooth adapter
-		mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
-
-		// If the adapter is null, then Bluetooth is not supported
-		if (mBluetoothAdapter == null) {
-			Toast.makeText(this, "Bluetooth is not available",
-					Toast.LENGTH_LONG).show();
-			finish();
-			return;
-		}
-
-		/* ¥H¤U¬°¥uÅT¤@¦¸ªº¾xÄÁªº³]©w */
+		/* ï¿½Hï¿½Uï¿½ï¿½ï¿½uï¿½Tï¿½@ï¿½ï¿½ï¿½ï¿½ï¿½xï¿½ï¿½ï¿½ï¿½ï¿½]ï¿½w */
 		setTime1 = (TextView) findViewById(R.id.setTime1);
-		/* ¥uÅT¤@¦¸ªº¾xÄÁªº³]©wButton */
+		/* ï¿½uï¿½Tï¿½@ï¿½ï¿½ï¿½ï¿½ï¿½xï¿½ï¿½ï¿½ï¿½ï¿½]ï¿½wButton */
 		mButton1 = (Button) findViewById(R.id.mButton1);
 		mButton1.setOnClickListener(new View.OnClickListener() {
 			public void onClick(View v) {
-				/* ¨ú±o«ö¤U«ö¶s®Éªº®É¶¡°µ¬°TimePickerDialogªº¹w³]­È */
+				/* ï¿½ï¿½oï¿½ï¿½ï¿½Uï¿½ï¿½ï¿½sï¿½Éªï¿½ï¿½É¶ï¿½ï¿½ï¿½ï¿½ï¿½TimePickerDialogï¿½ï¿½ï¿½wï¿½]ï¿½ï¿½ */
 				c.setTimeInMillis(System.currentTimeMillis());
 				int mHour = c.get(Calendar.HOUR_OF_DAY);
 				int mMinute = c.get(Calendar.MINUTE);
 
-				/* ¸õ¥XTimePickerDialog¨Ó³]©w®É¶¡ */
+				/* ï¿½ï¿½ï¿½XTimePickerDialogï¿½Ó³]ï¿½wï¿½É¶ï¿½ */
 				new TimePickerDialog(ElectricWake.this,
 						new TimePickerDialog.OnTimeSetListener() {
 							public void onTimeSet(TimePicker view,
 									int hourOfDay, int minute) {
-								/* ¨ú±o³]©w«áªº®É¶¡¡A¬í¸ò²@¬í³]¬°0 */
+								/* ï¿½ï¿½oï¿½]ï¿½wï¿½áªºï¿½É¶ï¿½ï¿½Aï¿½ï¿½ï¿½@ï¿½ï¿½]ï¿½ï¿½0 */
 								c.setTimeInMillis(System.currentTimeMillis());
 								c.set(Calendar.HOUR_OF_DAY, hourOfDay);
 								c.set(Calendar.MINUTE, minute);
 								c.set(Calendar.SECOND, 0);
 								c.set(Calendar.MILLISECOND, 0);
 
-								/* «ü©w¾xÄÁ³]©w®É¶¡¨ì®É­n°õ¦æCallAlarm.class */
+								/* ï¿½ï¿½wï¿½xï¿½ï¿½ï¿½]ï¿½wï¿½É¶ï¿½ï¿½ï¿½É­nï¿½ï¿½ï¿½ï¿½CallAlarm.class */
 								Intent intent = new Intent(ElectricWake.this,
 										CallAlarm.class);
-								/* «Ø¥ßPendingIntent */
+								/* ï¿½Ø¥ï¿½PendingIntent */
 								PendingIntent sender = PendingIntent
 										.getBroadcast(ElectricWake.this, 0,
 												intent, 0);
 								/*
-								 * AlarmManager.RTC_WAKEUP³]©wªA°È¦b¨t²Î¥ð¯v®É¦P¼Ë·|°õ¦æ
-								 * ¥Hset()³]©wªºPendingIntent¥u·|°õ¦æ¤@¦¸
+								 * AlarmManager.RTC_WAKEUPï¿½]ï¿½wï¿½Aï¿½È¦bï¿½tï¿½Î¥ï¿½vï¿½É¦Pï¿½Ë·|ï¿½ï¿½ï¿½ï¿½
+								 * ï¿½Hset()ï¿½]ï¿½wï¿½ï¿½PendingIntentï¿½uï¿½|ï¿½ï¿½ï¿½ï¿½@ï¿½ï¿½
 								 */
 								AlarmManager am;
 								am = (AlarmManager) getSystemService(ALARM_SERVICE);
 								am.set(AlarmManager.RTC_WAKEUP,
 										c.getTimeInMillis(), sender);
-								/* §ó·sÅã¥Üªº³]©w¾xÄÁ®É¶¡ */
-								String tmpS = format(hourOfDay) + "¡G"
+								/* ï¿½ï¿½sï¿½ï¿½Üªï¿½ï¿½]ï¿½wï¿½xï¿½ï¿½ï¿½É¶ï¿½ */
+								String tmpS = format(hourOfDay) + "ï¿½G"
 										+ format(minute);
 								setTime1.setText(tmpS);
-								/* ¥HToast´£¥Ü³]©w¤w§¹¦¨ */
+								/* ï¿½HToastï¿½ï¿½ï¿½Ü³]ï¿½wï¿½wï¿½ï¿½ï¿½ï¿½ */
 								Toast.makeText(ElectricWake.this,
-										"³]©w¾xÄÁ®É¶¡¬°" + tmpS, Toast.LENGTH_SHORT)
+										"ï¿½]ï¿½wï¿½xï¿½ï¿½ï¿½É¶ï¿½ï¿½ï¿½" + tmpS, Toast.LENGTH_SHORT)
 										.show();
 							}
 						}, mHour, mMinute, true).show();
 			}
 		});
 
-		/* ¥uÅT¤@¦¸ªº¾xÄÁªº²¾°£Button */
+		/* ï¿½uï¿½Tï¿½@ï¿½ï¿½ï¿½ï¿½ï¿½xï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Button */
 		mButton2 = (Button) findViewById(R.id.mButton2);
 		mButton2.setOnClickListener(new View.OnClickListener() {
 			public void onClick(View v) {
 				Intent intent = new Intent(ElectricWake.this, CallAlarm.class);
 				PendingIntent sender = PendingIntent.getBroadcast(
 						ElectricWake.this, 0, intent, 0);
-				/* ¥ÑAlarmManager¤¤²¾°£ */
+				/* ï¿½ï¿½AlarmManagerï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ */
 				AlarmManager am;
 				am = (AlarmManager) getSystemService(ALARM_SERVICE);
 				am.cancel(sender);
-				/* ¥HToast´£¥Ü¤w§R°£³]©w¡A¨Ã§ó·sÅã¥Üªº¾xÄÁ®É¶¡ */
-				Toast.makeText(ElectricWake.this, "¾xÄÁ®É¶¡¸Ñ°£", Toast.LENGTH_SHORT)
+				/* ï¿½HToastï¿½ï¿½ï¿½Ü¤wï¿½Rï¿½ï¿½ï¿½]ï¿½wï¿½Aï¿½Ã§ï¿½sï¿½ï¿½Üªï¿½ï¿½xï¿½ï¿½ï¿½É¶ï¿½ */
+				Toast.makeText(ElectricWake.this, "ï¿½xï¿½ï¿½ï¿½É¶ï¿½ï¿½Ñ°ï¿½", Toast.LENGTH_SHORT)
 						.show();
-				setTime1.setText("¥Ø«eµL³]©w");
+				setTime1.setText("ï¿½Ø«eï¿½Lï¿½]ï¿½w");
 			}
 		});
 
-		/* ¥H¤U¬°­«ÂÐÅT°_ªº¾xÄÁªº³]©w */
+		/* ï¿½Hï¿½Uï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Tï¿½_ï¿½ï¿½ï¿½xï¿½ï¿½ï¿½ï¿½ï¿½]ï¿½w */
 		setTime2 = (TextView) findViewById(R.id.setTime2);
-		/* create­«ÂÐÅT°_ªº¾xÄÁªº³]©wµe­± */
-		/* ¤Þ¥Îtimeset.xml¬°Layout */
+		/* createï¿½ï¿½ï¿½ï¿½ï¿½Tï¿½_ï¿½ï¿½ï¿½xï¿½ï¿½ï¿½ï¿½ï¿½]ï¿½wï¿½eï¿½ï¿½ */
+		/* ï¿½Þ¥ï¿½timeset.xmlï¿½ï¿½Layout */
 		LayoutInflater factory = LayoutInflater.from(this);
 		final View setView = factory.inflate(R.layout.timeset, null);
 		final TimePicker tPicker = (TimePicker) setView
 				.findViewById(R.id.tPicker);
 		tPicker.setIs24HourView(true);
 
-		/* create­«ÂÐÅT°_¾xÄÁªº³]©wDialog */
+		/* createï¿½ï¿½ï¿½ï¿½ï¿½Tï¿½_ï¿½xï¿½ï¿½ï¿½ï¿½ï¿½]ï¿½wDialog */
 		final AlertDialog di = new AlertDialog.Builder(ElectricWake.this)
 				.setIcon(R.drawable.clock)
-				.setTitle("³]©w")
+				.setTitle("ï¿½]ï¿½w")
 				.setView(setView)
-				.setPositiveButton("½T©w", new DialogInterface.OnClickListener() {
+				.setPositiveButton("ï¿½Tï¿½w", new DialogInterface.OnClickListener() {
 					public void onClick(DialogInterface dialog, int which) {
-						/* ¨ú±o³]©wªº¶¡¹j¬í¼Æ */
+						/* ï¿½ï¿½oï¿½]ï¿½wï¿½ï¿½ï¿½ï¿½ï¿½jï¿½ï¿½ï¿½ */
 						EditText ed = (EditText) setView
 								.findViewById(R.id.mEdit);
 						int times = Integer.parseInt(ed.getText().toString()) * 1000;
-						/* ¨ú±o³]©wªº¶}©l®É¶¡¡A¬í¤Î²@¬í³]¬°0 */
+						/* ï¿½ï¿½oï¿½]ï¿½wï¿½ï¿½ï¿½}ï¿½lï¿½É¶ï¿½ï¿½Aï¿½ï¿½Î²@ï¿½ï¿½]ï¿½ï¿½0 */
 						c.setTimeInMillis(System.currentTimeMillis());
 						c.set(Calendar.HOUR_OF_DAY, tPicker.getCurrentHour());
 						c.set(Calendar.MINUTE, tPicker.getCurrentMinute());
 						c.set(Calendar.SECOND, 0);
 						c.set(Calendar.MILLISECOND, 0);
 
-						/* «ü©w¾xÄÁ³]©w®É¶¡¨ì®É­n°õ¦æCallAlarm.class */
+						/* ï¿½ï¿½wï¿½xï¿½ï¿½ï¿½]ï¿½wï¿½É¶ï¿½ï¿½ï¿½É­nï¿½ï¿½ï¿½ï¿½CallAlarm.class */
 						Intent intent = new Intent(ElectricWake.this,
 								CallAlarm.class);
 						PendingIntent sender = PendingIntent.getBroadcast(
 								ElectricWake.this, 1, intent, 0);
-						/* setRepeating()¥iÅý¾xÄÁ­«ÂÐ°õ¦æ */
+						/* setRepeating()ï¿½iï¿½ï¿½xï¿½ï¿½ï¿½ï¿½ï¿½Ð°ï¿½ï¿½ï¿½ */
 						AlarmManager am;
 						am = (AlarmManager) getSystemService(ALARM_SERVICE);
 						am.setRepeating(AlarmManager.RTC_WAKEUP,
 								c.getTimeInMillis(), times, sender);
-						/* §ó·sÅã¥Üªº³]©w¾xÄÁ®É¶¡ */
-						String tmpS = format(tPicker.getCurrentHour()) + "¡G"
+						/* ï¿½ï¿½sï¿½ï¿½Üªï¿½ï¿½]ï¿½wï¿½xï¿½ï¿½ï¿½É¶ï¿½ */
+						String tmpS = format(tPicker.getCurrentHour()) + "ï¿½G"
 								+ format(tPicker.getCurrentMinute());
-						setTime2.setText("³]©w¾xÄÁ®É¶¡¬°" + tmpS + "¶}©l¡A­«ÂÐ¶¡¹j¬°" + times
-								/ 1000 + "¬í");
-						/* ¥HToast´£¥Ü³]©w¤w§¹¦¨ */
+						setTime2.setText("ï¿½]ï¿½wï¿½xï¿½ï¿½ï¿½É¶ï¿½ï¿½ï¿½" + tmpS + "ï¿½}ï¿½lï¿½Aï¿½ï¿½ï¿½Ð¶ï¿½ï¿½jï¿½ï¿½" + times
+								/ 1000 + "ï¿½ï¿½");
+						/* ï¿½HToastï¿½ï¿½ï¿½Ü³]ï¿½wï¿½wï¿½ï¿½ï¿½ï¿½ */
 						Toast.makeText(
 								ElectricWake.this,
-								"³]©w¾xÄÁ®É¶¡¬°" + tmpS + "¶}©l¡A­«ÂÐ¶¡¹j¬°" + times / 1000
-										+ "¬í", Toast.LENGTH_SHORT).show();
+								"ï¿½]ï¿½wï¿½xï¿½ï¿½ï¿½É¶ï¿½ï¿½ï¿½" + tmpS + "ï¿½}ï¿½lï¿½Aï¿½ï¿½ï¿½Ð¶ï¿½ï¿½jï¿½ï¿½" + times / 1000
+										+ "ï¿½ï¿½", Toast.LENGTH_SHORT).show();
 					}
 				})
-				.setNegativeButton("¨ú®ø", new DialogInterface.OnClickListener() {
+				.setNegativeButton("ï¿½ï¿½ï¿½", new DialogInterface.OnClickListener() {
 					public void onClick(DialogInterface dialog, int which) {
 					}
 				}).create();
 
-		/* ­«ÂÐÅT°_ªº¾xÄÁªº³]©wButton */
+		/* ï¿½ï¿½ï¿½ï¿½ï¿½Tï¿½_ï¿½ï¿½ï¿½xï¿½ï¿½ï¿½ï¿½ï¿½]ï¿½wButton */
 		mButton3 = (Button) findViewById(R.id.mButton3);
 		mButton3.setOnClickListener(new View.OnClickListener() {
 			public void onClick(View v) {
-				/* ¨ú±o«ö¤U«ö¶s®Éªº®É¶¡°µ¬°tPickerªº¹w³]­È */
+				/* ï¿½ï¿½oï¿½ï¿½ï¿½Uï¿½ï¿½ï¿½sï¿½Éªï¿½ï¿½É¶ï¿½ï¿½ï¿½ï¿½ï¿½tPickerï¿½ï¿½ï¿½wï¿½]ï¿½ï¿½ */
 				c.setTimeInMillis(System.currentTimeMillis());
 				tPicker.setCurrentHour(c.get(Calendar.HOUR_OF_DAY));
 				tPicker.setCurrentMinute(c.get(Calendar.MINUTE));
-				/* ¸õ¥X³]©wµe­±di */
+				/* ï¿½ï¿½ï¿½Xï¿½]ï¿½wï¿½eï¿½ï¿½di */
 				di.show();
 			}
 		});
 
-		/* ­«ÂÐÅT°_ªº¾xÄÁªº²¾°£Button */
+		/* ï¿½ï¿½ï¿½ï¿½ï¿½Tï¿½_ï¿½ï¿½ï¿½xï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Button */
 		mButton4 = (Button) findViewById(R.id.mButton4);
 		mButton4.setOnClickListener(new View.OnClickListener() {
 			public void onClick(View v) {
 				Intent intent = new Intent(ElectricWake.this, CallAlarm.class);
 				PendingIntent sender = PendingIntent.getBroadcast(
 						ElectricWake.this, 1, intent, 0);
-				/* ¥ÑAlarmManager¤¤²¾°£ */
+				/* ï¿½ï¿½AlarmManagerï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ */
 				AlarmManager am;
 				am = (AlarmManager) getSystemService(ALARM_SERVICE);
 				am.cancel(sender);
-				/* ¥HToast´£¥Ü¤w§R°£³]©w¡A¨Ã§ó·sÅã¥Üªº¾xÄÁ®É¶¡ */
-				Toast.makeText(ElectricWake.this, "¾xÄÁ®É¶¡¸Ñ°£", Toast.LENGTH_SHORT)
+				/* ï¿½HToastï¿½ï¿½ï¿½Ü¤wï¿½Rï¿½ï¿½ï¿½]ï¿½wï¿½Aï¿½Ã§ï¿½sï¿½ï¿½Üªï¿½ï¿½xï¿½ï¿½ï¿½É¶ï¿½ */
+				Toast.makeText(ElectricWake.this, "ï¿½xï¿½ï¿½ï¿½É¶ï¿½ï¿½Ñ°ï¿½", Toast.LENGTH_SHORT)
 						.show();
-				setTime2.setText("¥Ø«eµL³]©w");
+				setTime2.setText("ï¿½Ø«eï¿½Lï¿½]ï¿½w");
 			}
 		});
-		myReceiver = new MyReceiver();
-		IntentFilter intentFilter = new IntentFilter();
-		intentFilter.addAction(MY_ACTION);
-		registerReceiver(myReceiver, intentFilter);
 
+		myReceiver = new MyReceiver();
 	}
 
-	/* ¤é´Á®É¶¡Åã¥Ü¨â¦ì¼Æªºmethod */
+	/* ï¿½ï¿½ï¿½ï¿½É¶ï¿½ï¿½ï¿½Ü¨ï¿½ï¿½Æªï¿½method */
 	private String format(int x) {
 		String s = "" + x;
 		if (s.length() == 1)
@@ -290,48 +268,43 @@ public class ElectricWake extends Activity {
 	private Object[] activities = { "BT1010", "BT1020", "BT1030", "BT1040",
 			"BT1050", "BT1060", "BT1070", "BT1080" };
 
-	@Override
-	public void onStart() {
-		super.onStart();
-		
-		if (D)
-			Log.e(TAG, "++ ON START ++");
-		if (!mBluetoothAdapter.isEnabled()) {
-			Intent enableIntent = new Intent(
-					BluetoothAdapter.ACTION_REQUEST_ENABLE);
-			startActivityForResult(enableIntent, REQUEST_ENABLE_BT);
-		} else {
-			if (mChatService == null)
-				setupChat();
-		}
+	private BluetoothChatService mService;
+	private boolean mBound;
 
-	}
+	private ServiceConnection mConnection = new ServiceConnection() {
+		// Called when the connection with the service is established
+	    public void onServiceConnected(ComponentName className, IBinder service) {
+	        // Because we have bound to an explicit
+	        // service that is running in our own process, we can
+	        // cast its IBinder to a concrete class and directly access it.
+	        LocalBinder binder = (LocalBinder) service;
+	        mService = binder.getService();
+	        mBound = true;
+	    }
+
+	    // Called when the connection with the service disconnects unexpectedly
+	    public void onServiceDisconnected(ComponentName className) {
+	        Log.e(TAG, "onServiceDisconnected");
+	        mBound = false;
+	    }
+	};
 
 	@Override
-	public synchronized void onResume() {
+	public void onResume() {
 		super.onResume();
-		if (D)
-			Log.e(TAG, "+ ON RESUME +");
-		// Performing this check in onResume() covers the case in which BT was
-		// not enabled during onStart(), so we were paused to enable it...
-		// onResume() will be called when ACTION_REQUEST_ENABLE activity
-		// returns.
-		if (mChatService != null) {
-			// Only if the state is STATE_NONE, do we know that we haven't
-			// started already
-			if (mChatService.getState() == ElectricWakeService.STATE_NONE) {
-				// Start the Bluetooth chat services
-				mChatService.start();
-			}
-		}
+		Intent intent = new Intent(this, BluetoothChatService.class);
+		bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
 
+		IntentFilter intentFilter = new IntentFilter();
+		intentFilter.addAction(MY_ACTION);
+		registerReceiver(myReceiver, intentFilter);
 	}
 
-	private void setupChat() {
-		Log.d(TAG, "setupChat()");
-
-		// Initialize the BluetoothChatService to perform bluetooth connections
-		mChatService = new ElectricWakeService(this, mHandler);
+	@Override
+	public void onPause() {
+		super.onPause();
+		unbindService(mConnection);
+		unregisterReceiver(myReceiver);
 	}
 
 	private void createNXTConnection() {
@@ -352,62 +325,15 @@ public class ElectricWake extends Activity {
 			toast.show();
 			return;
 		}
-		mChatService.connect(nxtDevice);
-
-	}
-
-	@Override
-	public synchronized void onPause() {
-		super.onPause();
-		if (D)
-			Log.e(TAG, "- ON PAUSE -");
-	}
-
-	@Override
-	public void onStop() {
-		super.onStop();
-
-		if (D)
-			Log.e(TAG, "-- ON STOP --");
-	}
-
-	@Override
-	public void onDestroy() {
-		super.onDestroy();
-		// Stop the Bluetooth chat services
-		unregisterReceiver(myReceiver);
-		if (mChatService != null)
-			mChatService.stop();
-		if (D)
-			Log.e(TAG, "--- ON DESTROY ---");
-	}
-
-	private void resetport() {
-		if (mChatService.getState() == ElectricWakeService.STATE_CONNECTED) {
-			CharSequence[] list = new CharSequence[activities.length];
-			for (int i = 0; i < list.length; i++) {
-				// list[i] = (String)activities[i * 2];
-				String message = (String) activities[i];
-				sendMessage(message + "\r\n");
-			}
-		}
-	}
-
-	private void scanbt() {
-		Intent serverIntent = new Intent(this, DeviceListActivity.class);
-		startActivityForResult(serverIntent, REQUEST_CONNECT_DEVICE);
 	}
 
 	private void ensureDiscoverable() {
-		if (D)
-			Log.d(TAG, "ensure discoverable");
-		if (mBluetoothAdapter.getScanMode() != BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE) {
-			Intent discoverableIntent = new Intent(
-					BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
-			discoverableIntent.putExtra(
-					BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300);
-			startActivity(discoverableIntent);
-		}
+		if (D) Log.d(TAG, "ensure discoverable");
+		Intent discoverableIntent = new Intent(
+				BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
+		discoverableIntent.putExtra(
+				BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300);
+		startActivity(discoverableIntent);
 	}
 
 	// private void hotlifeonly(){
@@ -429,111 +355,34 @@ public class ElectricWake extends Activity {
 	 *            A string of text to send.
 	 */
 	private void sendMessage(String message) {
-		// Check that we're actually connected before trying anything
-		if (mChatService.getState() != ElectricWakeService.STATE_CONNECTED) {
-			Toast.makeText(this, R.string.not_connected, Toast.LENGTH_SHORT)
-					.show();
-			return;
-		}
-
 		// Check that there's actually something to send
-		if (message.length() > 0) {
+		if (!TextUtils.isEmpty(message)) {
 			// Get the message bytes and tell the BluetoothChatService to write
-			byte[] send = message.getBytes();
-			mChatService.write(send);
+			mService.write(message.getBytes());
 		}
 	}
 
-	// The Handler that gets information back from the BluetoothChatService
-	private final Handler mHandler = new Handler() {
-		@Override
-		public void handleMessage(Message msg) {
-			switch (msg.what) {
-			case MESSAGE_STATE_CHANGE:
-				if (D)
-					Log.i(TAG, "MESSAGE_STATE_CHANGE: " + msg.arg1);
-				switch (msg.arg1) {
-				case ElectricWakeService.STATE_CONNECTED:
-					mTitle.setText(R.string.title_connected_to);
-					mTitle.append(mConnectedDeviceName);
-					resetport();
-					// mConversationArrayAdapter.clear();
-					break;
-				case ElectricWakeService.STATE_CONNECTING:
-					// Get the BLuetoothDevice object
-					mTitle.setText(R.string.title_connecting);
-					break;
-				case ElectricWakeService.STATE_LISTEN:
-				case ElectricWakeService.STATE_NONE:
-					mTitle.setText(R.string.title_not_connected);
-					break;
-				}
-				break;
-			case MESSAGE_DEVICE_NAME:
-				// save the connected device's name
-				mConnectedDeviceName = msg.getData().getString(DEVICE_NAME);
-				Toast.makeText(getApplicationContext(),
-						"Connected to " + mConnectedDeviceName,
-						Toast.LENGTH_SHORT).show();
-				break;
-			case MESSAGE_TOAST:
-				Toast.makeText(getApplicationContext(),
-						msg.getData().getString(TOAST), Toast.LENGTH_SHORT)
-						.show();
-				break;
-			}
-		}
-	};
-
 	public void onActivityResult(int requestCode, int resultCode, Intent data) {
-		if (D)
-			Log.d(TAG, "onActivityResult " + resultCode);
+		if (D) Log.d(TAG, "onActivityResult " + resultCode);
 		switch (requestCode) {
-		case REQUEST_CONNECT_DEVICE:
-			// When DeviceListActivity returns with a device to connect
-			if (resultCode == Activity.RESULT_OK) {
-				// Get the device MAC address
-				String address = data.getExtras().getString(
-						DeviceListActivity.EXTRA_DEVICE_ADDRESS);
-				// Get the BLuetoothDevice object
-				/*
-				 * String[] hotlifecode = {"00","1A","FF"}; String[] checkcode =
-				 * address.split(":"); String[] changcode = new String[3];
-				 * changcode[0] = checkcode[0]; changcode[1] = checkcode[1];
-				 * changcode[2] = checkcode[2];
-				 * 
-				 * // Attempt to connect to the device if(changcode[0] ==
-				 * hotlifecode[0] && changcode[1] == hotlifecode[1] &&
-				 * changcode[2] == hotlifecode[2]){ // Attempt to connect to the
-				 * device mChatService.stop(); mChatService.start(); } else{
-				 * 
-				 * }
-				 */
-				BluetoothDevice device = mBluetoothAdapter
-						.getRemoteDevice(address);
-				mChatService.connect(device);
-
-			}
-			break;
-		case REQUEST_ENABLE_BT:
-			// When the request to enable Bluetooth returns
-			if (resultCode == Activity.RESULT_OK) {
-				// Bluetooth is now enabled, so set up a chat session
-				setupChat();
-			} else {
-				// User did not enable Bluetooth or an error occured
-				Log.d(TAG, "BT not enabled");
-				Toast.makeText(this, R.string.bt_not_enabled_leaving,
-						Toast.LENGTH_SHORT).show();
-				finish();
-			}
+			case REQUEST_CONNECT_DEVICE:
+				// When DeviceListActivity returns with a device to connect
+	            if (resultCode == Activity.RESULT_OK && mService != null) {
+	                // Get the device MAC address
+	                String address = data.getStringExtra(DeviceListActivity.EXTRA_DEVICE_ADDRESS);
+	                // Attempt to connect to the device
+                    mService.connect(address);
+	            }
+				break;
+			default:
+				super.onActivityResult(requestCode, resultCode, data);
+				break;
 		}
 	}
 
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
-		MenuInflater inflater = getMenuInflater();
-		inflater.inflate(R.menu.option_menu, menu);
+		getMenuInflater().inflate(R.menu.option_menu, menu);
 		return true;
 	}
 
@@ -556,7 +405,6 @@ public class ElectricWake extends Activity {
 	private class MyReceiver extends BroadcastReceiver {
 		@Override
 		public void onReceive(Context arg0, Intent arg1) {
-			// TODO Auto-generated method stub
 			int state = arg1.getIntExtra("state", -1);
 			if (state == 1) {
 				String message = "BT1051";
@@ -606,11 +454,7 @@ public class ElectricWake extends Activity {
 				}
 				message = "BT1070";
 				sendMessage(message + "\r\n");
-				
-
 			}
-
 		}
 	}
-
 }
