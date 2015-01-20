@@ -7,6 +7,9 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.util.UUID;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 
 import android.app.Service;
 import android.bluetooth.BluetoothAdapter;
@@ -20,6 +23,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
+import android.text.TextUtils;
 import android.util.Log;
 
 /**
@@ -176,6 +180,88 @@ public class BluetoothChatService extends Service {
         if (mAcceptThread != null) {mAcceptThread.cancel(); mAcceptThread = null;}
         setState(STATE_NONE);
     }
+
+    private enum ElectricalAlarmControl {
+    	ON1("BT1051"),
+    	ON2("BT1050"),
+    	OFF1("BT1071"),
+    	OFF2("BT1070");
+    	
+    	public String command;
+		ElectricalAlarmControl(String command) {
+    		this.command = command;
+    	}
+    }
+
+    public void turnOffElectricalAlarm(final ElectricalAlarmListener listener) {
+    	mExecutor.execute(new Runnable() {
+			@Override
+			public void run() {
+				sendMessage(ElectricalAlarmControl.OFF1.command);
+				try {
+					Thread.sleep(200);
+				} catch (InterruptedException e) {}
+				sendMessage(ElectricalAlarmControl.OFF2.command);
+				try {
+					Thread.sleep(200);
+				} catch (InterruptedException e) {}
+				sendMessage(ElectricalAlarmControl.OFF1.command);
+				try {
+					Thread.sleep(200);
+				} catch (InterruptedException e) {}
+				sendMessage(ElectricalAlarmControl.OFF2.command);
+
+				if (listener != null) {
+					listener.OnFinish();
+				}
+			}
+    	});
+    }
+
+    public void turnOnElectricalAlarm(final ElectricalAlarmListener listener) {
+    	mExecutor.execute(new Runnable() {
+			@Override
+			public void run() {
+				sendMessage(ElectricalAlarmControl.ON1.command);
+				try {
+					Thread.sleep(200);
+				} catch (InterruptedException e) {}
+				sendMessage(ElectricalAlarmControl.ON2.command);
+				try {
+					Thread.sleep(200);
+				} catch (InterruptedException e) {}
+				sendMessage(ElectricalAlarmControl.ON1.command);
+				try {
+					Thread.sleep(200);
+				} catch (InterruptedException e) {}
+				sendMessage(ElectricalAlarmControl.ON2.command);
+				
+				if (listener != null) {
+					listener.OnFinish();
+				}
+			}
+    	});
+    }
+
+    private Executor mExecutor = Executors.newSingleThreadExecutor();
+
+    public interface ElectricalAlarmListener {
+    	public void OnFinish();
+    }
+
+    /**
+	 * Sends a message.
+	 * 
+	 * @param message
+	 *            A string of text to send.
+	 */
+	private void sendMessage(String message) {
+		// Check that there's actually something to send
+		if (!TextUtils.isEmpty(message)) {
+			// Get the message bytes and tell the BluetoothChatService to write
+			write((message + "\r\n").getBytes());
+		}
+	}
 
     /**
      * Write to the ConnectedThread in an unsynchronized manner
