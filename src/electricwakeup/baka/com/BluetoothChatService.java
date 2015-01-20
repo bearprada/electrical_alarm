@@ -9,7 +9,6 @@ import java.io.OutputStream;
 import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadPoolExecutor;
 
 import android.app.Service;
 import android.bluetooth.BluetoothAdapter;
@@ -182,10 +181,10 @@ public class BluetoothChatService extends Service {
     }
 
     private enum ElectricalAlarmControl {
-    	ON1("BT1051"),
-    	ON2("BT1050"),
-    	OFF1("BT1071"),
-    	OFF2("BT1070");
+    	BUTTON_5_ON("BT1051"),
+    	BUTTON_5_OFF("BT1050"),
+    	BUTTON_7_ON("BT1071"),
+    	BUTTON_7_OFF("BT1070");
     	
     	public String command;
 		ElectricalAlarmControl(String command) {
@@ -197,19 +196,19 @@ public class BluetoothChatService extends Service {
     	mExecutor.execute(new Runnable() {
 			@Override
 			public void run() {
-				sendMessage(ElectricalAlarmControl.OFF1.command);
+				sendMessage(ElectricalAlarmControl.BUTTON_7_ON.command);
 				try {
 					Thread.sleep(200);
 				} catch (InterruptedException e) {}
-				sendMessage(ElectricalAlarmControl.OFF2.command);
+				sendMessage(ElectricalAlarmControl.BUTTON_7_OFF.command);
 				try {
 					Thread.sleep(200);
 				} catch (InterruptedException e) {}
-				sendMessage(ElectricalAlarmControl.OFF1.command);
+				sendMessage(ElectricalAlarmControl.BUTTON_7_ON.command);
 				try {
 					Thread.sleep(200);
 				} catch (InterruptedException e) {}
-				sendMessage(ElectricalAlarmControl.OFF2.command);
+				sendMessage(ElectricalAlarmControl.BUTTON_7_OFF.command);
 
 				if (listener != null) {
 					listener.OnFinish();
@@ -222,19 +221,19 @@ public class BluetoothChatService extends Service {
     	mExecutor.execute(new Runnable() {
 			@Override
 			public void run() {
-				sendMessage(ElectricalAlarmControl.ON1.command);
+				sendMessage(ElectricalAlarmControl.BUTTON_5_ON.command);
 				try {
 					Thread.sleep(200);
 				} catch (InterruptedException e) {}
-				sendMessage(ElectricalAlarmControl.ON2.command);
+				sendMessage(ElectricalAlarmControl.BUTTON_5_OFF.command);
 				try {
 					Thread.sleep(200);
 				} catch (InterruptedException e) {}
-				sendMessage(ElectricalAlarmControl.ON1.command);
+				sendMessage(ElectricalAlarmControl.BUTTON_5_ON.command);
 				try {
 					Thread.sleep(200);
 				} catch (InterruptedException e) {}
-				sendMessage(ElectricalAlarmControl.ON2.command);
+				sendMessage(ElectricalAlarmControl.BUTTON_5_OFF.command);
 				
 				if (listener != null) {
 					listener.OnFinish();
