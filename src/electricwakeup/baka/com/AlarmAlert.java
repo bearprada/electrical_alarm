@@ -54,15 +54,15 @@ public class AlarmAlert extends Activity {
 	};
 
 	@Override
-	public void onResume() {
-		super.onResume();
+	public void onStart() {
+		super.onStart();
 		Intent intent = new Intent(this, BluetoothChatService.class);
 		bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
 	}
 
 	@Override
-	public void onPause() {
-		super.onPause();
+	public void onStop() {
+		super.onStop();
 		unbindService(mConnection);
 	}
 
